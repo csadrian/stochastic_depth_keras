@@ -146,7 +146,7 @@ inputs, predictions = build_net(filter_num_config=filter_num_config, nb_classes=
 model = Model(input=inputs, output=predictions)
 
 sgd = SGD(lr=0.1, momentum=0.9, nesterov=True)
-model.compile(optimizer=sgd, loss="categorical_crossentropy")
+model.compile(optimizer=sgd, loss="categorical_crossentropy", metrics=["accuracy"])
 
 
 def open_all_gates():
