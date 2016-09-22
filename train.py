@@ -6,12 +6,12 @@ import numpy as np
 np.random.seed(2 ** 10)
 
 # Prevent reaching to maximum recursion depth in `theano.tensor.grad`
-# import sys
-# sys.setrecursionlimit(2 ** 20)
+import sys
+sys.setrecursionlimit(2 ** 20)
 
 from six.moves import range
 
-from keras.datasets import cifar10
+from keras.datasets import cifar100
 from keras.layers import Input, Dense, Layer, merge, Activation, Flatten, Lambda
 from keras.layers.convolutional import Convolution2D, AveragePooling2D
 from keras.layers.normalization import BatchNormalization
@@ -24,20 +24,24 @@ from keras.utils import np_utils
 import keras.backend as K
 
 
-batch_size = 64
-nb_classes = 10
+batch_size = 128
+nb_classes = 100
 nb_epoch = 500
-N = 18
+N = 8
 weight_decay = 1e-4
 lr_schedule = [0.5, 0.75]
 
 death_mode = "lin_decay"  # or uniform
 death_rate = 0.5
 
+filter_num_config = [16, 32, 64]
+wideness = 5
+filter_num_config = wideness * filter_num_config
+
 img_rows, img_cols = 32, 32
 img_channels = 3
 
-(X_train, y_train), (X_test, y_test) = cifar10.load_data()
+(X_train, y_train), (X_test, y_test) = cifar100.load_data()
 print('X_train shape:', X_train.shape)
 print(X_train.shape[0], 'train samples')
 print(X_test.shape[0], 'test samples')
@@ -51,11 +55,6 @@ Y_test = np_utils.to_categorical(y_test, nb_classes)
 
 add_tables = []
 
-inputs = Input(shape=(img_channels, img_rows, img_cols))
-
-net = Convolution2D(16, 3, 3, border_mode="same", W_regularizer=l2(weight_decay))(inputs)
-net = BatchNormalization(axis=1)(net)
-net = Activation("relu")(net)
 
 
 def residual_drop(x, input_shape, output_shape, strides=(1, 1)):
@@ -97,39 +96,53 @@ def residual_drop(x, input_shape, output_shape, strides=(1, 1)):
                   output_shape=output_shape)([out, x])
 
 
-for i in range(N):
-    net = residual_drop(net, input_shape=(16, 32, 32), output_shape=(16, 32, 32))
+def build_net(filter_num_config, nb_classes=10):
 
-net = residual_drop(
-    net,
-    input_shape=(16, 32, 32),
-    output_shape=(32, 16, 16),
-    strides=(2, 2)
-)
-for i in range(N - 1):
+    inputs = Input(shape=(img_channels, img_rows, img_cols))
+
+    net = Convolution2D(filter_num_config[0], 3, 3, border_mode="same", W_regularizer=l2(weight_decay))(inputs)
+    net = BatchNormalization(axis=1)(net)
+    net = Activation("relu")(net)
+
+    for i in range(N):
+        net = residual_drop(net, input_shape=(filter_num_config[0], 32, 32), output_shape=(filter_num_config[0], 32, 32))
+
     net = residual_drop(
         net,
-        input_shape=(32, 16, 16),
-        output_shape=(32, 16, 16)
+        input_shape=(filter_num_config[0], 32, 32),
+        output_shape=(filter_num_config[1], 16, 16),
+       strides=(2, 2)
     )
+    for i in range(N - 1):
+        net = residual_drop(
+            net,
+            input_shape=(filter_num_config[1], 16, 16),
+            output_shape=(filter_num_config[1], 16, 16)
+        )
 
-net = residual_drop(
-    net,
-    input_shape=(32, 16, 16),
-    output_shape=(64, 8, 8),
-    strides=(2, 2)
-)
-for i in range(N - 1):
     net = residual_drop(
         net,
-        input_shape=(64, 8, 8),
-        output_shape=(64, 8, 8)
+        input_shape=(filter_num_config[1], 16, 16),
+        output_shape=(filter_num_config[2], 8, 8),
+        strides=(2, 2)
     )
+    for i in range(N - 1):
+        net = residual_drop(
+            net,
+            input_shape=(filter_num_config[2], 8, 8),
+            output_shape=(filter_num_config[2], 8, 8)
+        )
 
-pool = AveragePooling2D((8, 8))(net)
-flatten = Flatten()(pool)
+    pool = AveragePooling2D((8, 8))(net)
+    flatten = Flatten()(pool)
 
-predictions = Dense(10, activation="softmax", W_regularizer=l2(weight_decay))(flatten)
+    predictions = Dense(nb_classes, activation="softmax", W_regularizer=l2(weight_decay))(flatten)
+
+    return inputs, predictions
+
+
+inputs, predictions = build_net(filter_num_config=filter_num_config, nb_classes=nb_classes)
+
 model = Model(input=inputs, output=predictions)
 
 sgd = SGD(lr=0.1, momentum=0.9, nesterov=True)
@@ -180,8 +193,8 @@ datagen = ImageDataGenerator(
     samplewise_std_normalization=False,
     zca_whitening=False,
     rotation_range=0,
-    width_shift_range=0.,
-    height_shift_range=0.,
+    width_shift_range=0.125,
+    height_shift_range=0.125,
     horizontal_flip=True,
     vertical_flip=False)
 datagen.fit(X_train)
