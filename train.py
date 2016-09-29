@@ -45,6 +45,18 @@ death_rate = 0.5
 filter_num_config = [16, 32, 64]
 
 
+
+class Saver(Callback):
+    def __init__(self, weights_filename):
+        self.weights_filename = weights_filename
+    def on_epoch_end(self, epoch, logs={}):
+        open_all_gates()
+        json_string = self.model.to_json()
+        open('my_model_architecture.json', 'w').write(json_string) # TODO Do or do not save architecture?
+        self.model.save_weights(self.weights_filename, overwrite=True)
+
+
+
 filter_num_config = [wideness * i for i in filter_num_config]
 
 img_rows, img_cols = 32, 32
@@ -158,6 +170,9 @@ model = Model(input=inputs, output=predictions)
 sgd = SGD(lr=0.1, momentum=0.9, nesterov=True)
 model.compile(optimizer=sgd, loss="categorical_crossentropy", metrics=["accuracy"])
 
+total_param_count = model.count_params()
+print('total param_count %d' % total_param_count)
+sys.stdout.flush()
 
 def open_all_gates():
     for t in add_tables:
@@ -228,4 +243,4 @@ model.fit_generator(datagen.flow(X_train, Y_train, batch_size=batch_size, shuffl
                     nb_epoch=nb_epoch,
                     validation_data=test_datagen.flow(X_test, Y_test, batch_size=batch_size),
                     nb_val_samples=X_test.shape[0],
-                    callbacks=[GatesUpdate(), LearningRateScheduler(schedule)])
+                    callbacks=[GatesUpdate(), LearningRateScheduler(schedule), Saver("my_model_weights.h5")])
