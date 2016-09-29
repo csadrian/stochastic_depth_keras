@@ -27,7 +27,15 @@ import keras.backend as K
 batch_size = 128
 nb_classes = 100
 nb_epoch = 500
-N = 8
+
+N = 7
+wideness = 4
+# The parameters are tuned to make it fit into percy GPU memory.
+# Considering the level0 N-1 hack (see below), this is supposed to be directly comparable to
+# ~/stochastic-depth-gridsearch/N-6-7-7_WS-no-no-no_bs-128_stoch_wide-4_aug_c100.cout
+# val_acc 79.09.
+
+
 weight_decay = 1e-4
 lr_schedule = [0.5, 0.75]
 
@@ -35,7 +43,8 @@ death_mode = "lin_decay"  # or uniform
 death_rate = 0.5
 
 filter_num_config = [16, 32, 64]
-wideness = 5
+
+
 filter_num_config = [wideness * i for i in filter_num_config]
 
 img_rows, img_cols = 32, 32
@@ -60,14 +69,15 @@ add_tables = []
 def residual_drop(x, input_shape, output_shape, strides=(1, 1)):
     global add_tables
 
+    conv = BatchNormalization(axis=1)(x)
+    conv = Activation("relu")(conv)
     nb_filter = output_shape[0]
     conv = Convolution2D(nb_filter, 3, 3, subsample=strides,
-                         border_mode="same", W_regularizer=l2(weight_decay))(x)
+                         border_mode="same", W_regularizer=l2(weight_decay))(conv)
     conv = BatchNormalization(axis=1)(conv)
     conv = Activation("relu")(conv)
     conv = Convolution2D(nb_filter, 3, 3,
                          border_mode="same", W_regularizer=l2(weight_decay))(conv)
-    conv = BatchNormalization(axis=1)(conv)
 
     if strides[0] >= 2:
         x = AveragePooling2D(strides)(x)
@@ -88,7 +98,6 @@ def residual_drop(x, input_shape, output_shape, strides=(1, 1)):
                   output_shape=output_shape)(conv)
 
     out = merge([conv, x], mode="sum")
-    out = Activation("relu")(out)
 
     gate = K.variable(1, dtype="uint8")
     add_tables += [{"death_rate": _death_rate, "gate": gate}]
@@ -104,7 +113,8 @@ def build_net(filter_num_config, nb_classes=10):
     net = BatchNormalization(axis=1)(net)
     net = Activation("relu")(net)
 
-    for i in range(N):
+    print("BEWARE: one less block added at level 0, to make it comparable to old (N-1)-N-N runs.")
+    for i in range(N-1):
         net = residual_drop(net, input_shape=(filter_num_config[0], 32, 32), output_shape=(filter_num_config[0], 32, 32))
 
     net = residual_drop(
