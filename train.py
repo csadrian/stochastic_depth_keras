@@ -36,7 +36,7 @@ death_rate = 0.5
 
 filter_num_config = [16, 32, 64]
 wideness = 5
-filter_num_config = wideness * filter_num_config
+filter_num_config = [wideness * i for i in filter_num_config]
 
 img_rows, img_cols = 32, 32
 img_channels = 3
